@@ -1,0 +1,18 @@
+fastapi==0.115.11
+PyYAML
+pillow==9.0.1
+torch==2.5.1 --index-url https://download.pytorch.org/whl/cu118
+torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cu118
+qdrant-client
+python-dotenv
+uvicorn==0.29.0
+simplejson
+fvcore
+scikit-learn
+tensorboard
+efficientnet_pytorch
+kornia
+loralib
+python-multipart
+pymongo
+bcrypt
