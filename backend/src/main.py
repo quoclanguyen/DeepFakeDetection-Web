@@ -1,3 +1,4 @@
+import base64
 import io
 import uvicorn
 import uuid
@@ -9,8 +10,9 @@ from PIL import Image
 from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct
 from pymongo import MongoClient
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from utils.classes.classes import LoginPayload, ImageUploadResponse, RegisterPayload, ConfirmRegisterPayload
 from utils.nn.model_processing import *
 from utils.nn.image_processing import *
@@ -30,6 +32,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+security = HTTPBearer()
 
 collection_name = "DeepFakeDetection"
 qdrant_client = QdrantClient(url = QDRANT_ENDPOINT, api_key = QDRANT_API_KEY, timeout = 10)
@@ -40,45 +43,82 @@ mongodb = mongo_client[collection_name]
 #     collection_name=collection_name,
 #     vectors_config=models.VectorParams(size=224*224, distance=models.Distance.EUCLID),
 # )
-@app.post("/app/v1/upload/image", description = "Upload image files", response_model = ImageUploadResponse)
-async def upload_image(file: UploadFile = File(...)):
+@app.post("/app/v1/upload/image", description = "Upload image files", response_model = ImageUploadResponse, tags=["auth"])
+async def upload_image(file: UploadFile = File(...), credentials: HTTPAuthorizationCredentials = Depends(security)):
+    jwt_token = credentials.credentials
     image_data = await file.read()
     image = Image.open(io.BytesIO(image_data))
     image_vector = image_to_vector(image)
     
-    ids = []
+    ids = ""
     for v in split_vector(image_vector):
         image_id = str(uuid.uuid1())
-        ids.append(image_id)
+        ids += image_id
         point = PointStruct(
             id = image_id,
             vector = v,
             payload = {"filename": file.filename}
         )
         qdrant_client.upsert(collection_name=collection_name, points=[point])
+    query = mongodb["images"].find({"jwt_token": {"$eq": jwt_token}})
+    image_id_mongo = 0
+    if len(list(query)) != 0:
+        lastest_id = int(mongodb["images"].find({"jwt_token": {"$eq": jwt_token}}).sort("image_id", -1).to_list()[0]["image_id"])
+        image_id_mongo = lastest_id + 1
+    mongodb["images"].insert_one({
+            "jwt_token": jwt_token,
+            "q_ids": ids,
+            "image_id": image_id_mongo,
+            "timestamp": datetime.datetime.utcnow()
+        })
+    return {"message": "Image uploaded successfully", "filename": file.filename, "ids": ids, "image_id": str(image_id_mongo)}
 
-    return {"message": "Image uploaded successfully", "filename": file.filename, "ids": ids}
-
-@app.get("/app/v1/image/{image_ids}", description="Retrieve image vector by ID")
-async def get_image(image_ids: str):
+@app.get("/app/v1/image/all/", description="Retrieve all images by user", tags=["auth"])
+async def get_all_image(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    jwt_token = credentials.credentials
     try:
-        image_ids = image_ids.split("+")
+        query = mongodb["images"].find(filter = {"jwt_token": {"$eq": jwt_token}}, sort = {"timestamp": 1}, projection = {"q_ids": 1}).to_list()
+        if len(list(query)) == 0:
+            return HTTPException(status_code=404, detail="Cannot find any image")
+        # Fetch the stored vector and metadata (payload) from Qdrant
+        image_qids = list(map(lambda d: d["q_ids"], query))
+        return {
+            "message": "Retrieved successfully!",
+            "q_ids": image_qids
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/app/v1/image/{image_ids}", description="Retrieve image vector by ID", tags=["auth"])
+async def get_image(image_ids: str, credentials: HTTPAuthorizationCredentials = Depends(security)):
+    try:
+        jwt_token = credentials.credentials
+        query = mongodb["images"].find(filter = {"jwt_token": {"$eq": jwt_token}, "q_ids": {"$eq": image_ids}}).to_list()
+        if len(list(query)) == 0:
+            return HTTPException(status_code=403, detail="Forbidden action")
+        image_ids = [image_ids[:36], image_ids[36:72], image_ids[72:]] 
+        print(image_ids)
         # Fetch the stored vector and metadata (payload) from Qdrant
         response = qdrant_client.retrieve(collection_name=collection_name, ids=image_ids, with_vectors=True, with_payload=True)
+        vector = reconstruct_vector(response[i].vector for i in range(3))
+        image = vector_to_image(vector)
+
+        buffered = io.BytesIO()
+        image.save(buffered, format="PNG")
+        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
 
         if response is None:
             raise HTTPException(status_code=404, detail="Image not found")
         response = response[0]
         return {
-            "id": response.id,
-            "vector": response.vector,
+            "image_data": img_str,
             "metadata": response.payload,
             "message": "Retrieved successfully!"
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     
-@app.post("/app/v1/detect/{image_ids}", description = "Deepfake detecting")
+@app.post("/app/v1/detect/{image_ids}", description = "Deepfake detecting", tags=["auth"])
 async def detect_image(image_ids: str):
     try:
         image_ids = [image_ids[:36], image_ids[36:72], image_ids[72:]] 
@@ -89,12 +129,14 @@ async def detect_image(image_ids: str):
             raise HTTPException(status_code=404, detail="Image not found")
         vector = reconstruct_vector(response[i].vector for i in range(3))
         image = vector_to_image(vector)
-        image.save("test.jpg")
+        # image.save("test.jpg")
         return {}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/app/v1/login/", description = "Login")
+# No auth APIs
+
+@app.post("/app/v1/login/", description = "Login", tags=["no_auth"])
 async def login(payload: LoginPayload):
     try:
         query = mongodb["users"].find({"email": {"$eq": payload.email}})
@@ -113,7 +155,7 @@ async def login(payload: LoginPayload):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/app/v1/register/", description = "Register")
+@app.post("/app/v1/register/", description = "Register", tags=["no_auth"])
 async def register(payload: RegisterPayload):
     try:
         query = mongodb["users"].find({"email": {"$eq": payload.email}})
@@ -156,7 +198,7 @@ async def register(payload: RegisterPayload):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/app/v1/register/confirm", description = "Register confirm")
+@app.post("/app/v1/register/confirm", description = "Register confirm", tags=["no_auth"])
 async def confirm_register(payload: ConfirmRegisterPayload):
     try:
         query = mongodb["temp_otps"].find({"email": {"$eq": payload.email}}).sort("createdAt", -1).to_list()

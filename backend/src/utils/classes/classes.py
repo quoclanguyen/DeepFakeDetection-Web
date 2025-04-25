@@ -2,7 +2,8 @@ from pydantic import BaseModel
 class ImageUploadResponse(BaseModel):
     message: str
     filename: str
-    ids: list[str]
+    ids: str
+    image_id: str
 
 class LoginPayload(BaseModel):
     email: str
