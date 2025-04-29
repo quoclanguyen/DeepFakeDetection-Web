@@ -9,5 +9,21 @@ export const authServices = {
         });
 
         return response.data;
+    }, 
+    register: async (email: string, password: string) => {
+        const response = await axiosClient.post(AuthEndpoint.register.url, {
+            email,
+            password
+        });
+
+        return response.data;
+    },
+    confirmRegister: async (email: string, otp: string) => {
+        const response = await axiosClient.post(AuthEndpoint.confirmRegister.url, {
+            email,
+            otp
+        });
+
+        return response.data;
     }
 };

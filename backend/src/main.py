@@ -143,12 +143,12 @@ async def login(payload: LoginPayload):
     try:
         query = mongodb["users"].find({"email": {"$eq": payload.email}})
         if len(list(query)) == 0: # not found
-            return HTTPException(status_code=404, detail="User not found")
+            return {"status_code": 404, "message": "User not found"}
         password_db = mongodb["users"].find({"email": {"$eq": payload.email}})[0]["password"]
         hashed_payload = hashlib.sha256(payload.password.encode('utf-8')).hexdigest()
         # print(hashed_payload)
         if hashed_payload != password_db:
-            raise HTTPException(status_code=401, detail="Invalid credentials. Wrong password")
+            return {"status_code": 401, "message": "Invalid credentials. Wrong password"}
         jwt_token = jwt.encode({"email": payload.email, "password": password_db}, SECRET_KEY, algorithm="HS256")
         return {
             "status_code": 200,
@@ -164,7 +164,10 @@ async def register(payload: RegisterPayload):
     try:
         query = mongodb["users"].find({"email": {"$eq": payload.email}})
         if len(list(query)) != 0:
-            return HTTPException(status_code=409, detail="Email is already in use")
+            return {
+                "status_code": 409,
+                "message": "Email is already in use"
+            }
         
 
         otp = str(random.randint(100000, 999999))
@@ -207,7 +210,10 @@ async def confirm_register(payload: ConfirmRegisterPayload):
     try:
         query = mongodb["temp_otps"].find({"email": {"$eq": payload.email}}).sort("createdAt", -1).to_list()
         if len(list(query)) == 0:
-            return HTTPException(status_code=404, detail="Email/OTP not found")
+            return {
+                "status_code": 404,
+                "message": "Email/OTP not found"
+            }
 
         lastest_otp = query[0]["otp"]
         expiration_time = query[0]["createdAt"] + datetime.timedelta(minutes=5)
@@ -229,9 +235,11 @@ async def confirm_register(payload: ConfirmRegisterPayload):
             "password": query[0]["password"]
         })
         mongodb["temp_otps"].delete_many({"email": payload.email})
+        jwt_token = jwt.encode({"email": payload.email, "password": query[0]["password"]}, SECRET_KEY, algorithm="HS256")
         return {
             "status_code": 200,
-            "message": "Confirm OTP successfully!"
+            "message": "Confirm OTP successfully!",
+            "jwt_token": jwt_token
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

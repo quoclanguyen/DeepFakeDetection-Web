@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import HomeLayout from "../layouts/HomeLayout";
 import Button from "../components/ui/Button";
 import { authServices } from "../api/services/authServices";
+import Loader from "../components/animation/Loader";
 
 const Register = () => {
     const [email, setEmail] = useState("");
@@ -41,11 +42,19 @@ const Register = () => {
 
         try {
             const data = await authServices.register(email, password);
-            localStorage.setItem("jwt_token", data.jwt_token);
-            navigate("/detect");
+            console.log(data)
+            if (data.status_code != 200) {
+                const errMsg = data.message;
+                setErrorMessage(errMsg);
+                return;
+            }
+            navigate("/register/confirm", { state: { email } });
+            // localStorage.setItem("jwt_token", data.jwt_token);
+            // navigate("/detect");
         } catch (error) {
             const errMsg = error?.response?.data?.detail || "Registration failed. Try again.";
             setErrorMessage(errMsg);
+            console.log(errMsg)
         } finally {
             setLoading(false);
         }
@@ -109,7 +118,9 @@ const Register = () => {
                             disabled={loading}
                         >
                             {loading ? "Registering..." : "Register"}
+                            {loading ? <Loader /> : <></>}
                         </Button>
+
                     </form>
 
                     <p className="text-sm text-gray-400 mt-4 text-center py-2">

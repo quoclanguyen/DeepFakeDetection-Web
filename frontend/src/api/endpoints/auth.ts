@@ -7,5 +7,9 @@ export const AuthEndpoint = {
     register: {
         url: "/register",
         method: "POST"
+    },
+    confirmRegister: {
+        url: "/register/confirm",
+        method: "POST"
     }
 }

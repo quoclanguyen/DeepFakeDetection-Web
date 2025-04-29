@@ -19,6 +19,12 @@ const Login = () => {
         try {
             const data = await authServices.login(email, password);
             console.log(data);
+            if (data.status_code != 200) {
+                const errMsg = data.message;
+                setErrorMessage(errMsg);
+                return;
+            }
+
             localStorage.setItem("jwt_token", data.jwt_token);
             navigate("/detect");
         } catch (error) {
