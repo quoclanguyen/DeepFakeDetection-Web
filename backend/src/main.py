@@ -5,6 +5,7 @@ import uuid
 import hashlib
 import smtplib
 import datetime
+import jwt
 
 from PIL import Image
 from qdrant_client import QdrantClient
@@ -119,8 +120,9 @@ async def get_image(image_ids: str, credentials: HTTPAuthorizationCredentials = 
         raise HTTPException(status_code=500, detail=str(e))
     
 @app.post("/app/v1/detect/{image_ids}", description = "Deepfake detecting", tags=["auth"])
-async def detect_image(image_ids: str):
+async def detect_image(image_ids: str, credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
+        jwt_token = credentials.credentials
         image_ids = [image_ids[:36], image_ids[36:72], image_ids[72:]] 
         
         response = qdrant_client.retrieve(collection_name=collection_name, ids=image_ids, with_vectors=True, with_payload=True)
@@ -147,9 +149,11 @@ async def login(payload: LoginPayload):
         # print(hashed_payload)
         if hashed_payload != password_db:
             raise HTTPException(status_code=401, detail="Invalid credentials. Wrong password")
+        jwt_token = jwt.encode({"email": payload.email, "password": password_db}, SECRET_KEY, algorithm="HS256")
         return {
             "status_code": 200,
-            "message": "Login successfully!"
+            "message": "Login successfully!",
+            "jwt_token": jwt_token
         }
         
     except Exception as e:

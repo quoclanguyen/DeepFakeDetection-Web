@@ -16,3 +16,4 @@ loralib
 python-multipart
 pymongo
 bcrypt
+pyjwt
