@@ -111,6 +111,7 @@ async def get_image(image_ids: str, credentials: HTTPAuthorizationCredentials = 
         if response is None:
             raise HTTPException(status_code=404, detail="Image not found")
         response = response[0]
+        print(response.payload)
         return {
             "image_data": img_str,
             "metadata": response.payload,
@@ -149,7 +150,7 @@ async def login(payload: LoginPayload):
         # print(hashed_payload)
         if hashed_payload != password_db:
             return {"status_code": 401, "message": "Invalid credentials. Wrong password"}
-        jwt_token = jwt.encode({"email": payload.email, "password": password_db}, SECRET_KEY, algorithm="HS256")
+        jwt_token = jwt.encode({"email": payload.email}, SECRET_KEY, algorithm="HS256")
         return {
             "status_code": 200,
             "message": "Login successfully!",
@@ -235,7 +236,7 @@ async def confirm_register(payload: ConfirmRegisterPayload):
             "password": query[0]["password"]
         })
         mongodb["temp_otps"].delete_many({"email": payload.email})
-        jwt_token = jwt.encode({"email": payload.email, "password": query[0]["password"]}, SECRET_KEY, algorithm="HS256")
+        jwt_token = jwt.encode({"email": payload.email}, SECRET_KEY, algorithm="HS256")
         return {
             "status_code": 200,
             "message": "Confirm OTP successfully!",
