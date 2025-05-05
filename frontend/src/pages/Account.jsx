@@ -24,11 +24,12 @@ const Account = () => {
 
     const handleLogout = () => {
         localStorage.removeItem("jwt_token");
+        localStorage.removeItem("acess_token");
         navigate("/login");
     };
 
     const handleChangePassword = () => {
-        navigate("/login");
+        navigate("/change_password", { state: { email } });
     };
 
     const handleViewGallery = () => {
@@ -47,10 +48,6 @@ const Account = () => {
                             <p className="text-sm text-gray-600">{email}</p>
                         </div>
 
-                        <div>
-                            <label className="text-lg text-gray-800 mt-1">Token</label>
-                            <p className="text-sm text-gray-600">1</p>
-                        </div>
                         <div>
                             <label
                                 onClick={handleChangePassword}

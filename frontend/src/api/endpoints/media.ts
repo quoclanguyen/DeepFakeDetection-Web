@@ -1,4 +1,3 @@
-import { _Image } from "../../interfaces"
 
 export const MediaEndpoint = {
     uploadImage: {
@@ -12,5 +11,9 @@ export const MediaEndpoint = {
     getImage: (imageId: string) => ({
         url: `/image/${imageId}`,
         method: "GET"
+    }),
+    deleteImage: (imageId: string) => ({
+        url: `/image/delete/${imageId}`,
+        method: "DELETE"
     })
 }

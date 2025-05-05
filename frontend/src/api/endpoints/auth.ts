@@ -8,8 +8,16 @@ export const AuthEndpoint = {
         url: "/register",
         method: "POST"
     },
-    confirmRegister: {
-        url: "/register/confirm",
+    confirmOtp: {
+        url: "/confirm",
+        method: "POST"
+    },
+    recover: {
+        url: "/recover",
+        method: "POST"
+    },
+    changePassword: {
+        url: "/change_password",
         method: "POST"
     }
 }

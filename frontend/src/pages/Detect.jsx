@@ -3,6 +3,9 @@ import { Upload, CheckCircle } from "lucide-react";
 import HomeLayout from "../layouts/HomeLayout";
 import { mediaServices } from "../api/services/mediaServices";
 import ResultsCard from "../components/ui/ResultsCard";
+import { ToastContainer, toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
+import Loader from "../components/animation/Loader";
 
 const Detect = () => {
     const [file, setFile] = useState(null);
@@ -39,10 +42,15 @@ const Detect = () => {
 
         try {
             const response = await mediaServices.uploadImage(file);
-            console.log("Upload success");
-            setResult(response.data);
-            setLoading(false);
-            return response.data;
+            console.log(response)
+            if (response.status_code == 200) {
+                toast.success("Upload successful!", );
+                setResult(response.data);
+                setLoading(false);
+                setPreviewUrl(null);
+                setFile(null);
+                return response.data;
+            }
         } catch (error) {
             console.log(error);
             setLoading(false);
@@ -50,6 +58,7 @@ const Detect = () => {
     }
     return (
         <HomeLayout>
+            <ToastContainer position="top-center" autoClose={1500} />
             <div className="relative flex flex-col items-center justify-center h-screen text-white px-4 bg-gray-800">
                 <h1 className="text-4xl font-extrabold mb-4">Deepfake Detection</h1>
                 <p className="text-lg text-gray-300 mb-6">Upload a file to analyze deepfakes.</p>
@@ -118,6 +127,7 @@ const Detect = () => {
                         />
                     </div>
                 )}
+                {loading && <Loader message="Uploading..."/>}
             </div>
         </HomeLayout>
     );

@@ -12,6 +12,7 @@ const Register = () => {
     const [loading, setLoading] = useState(false);
     const [errorMessage, setErrorMessage] = useState("");
     const navigate = useNavigate();
+    const confirm_type = 0;
 
     const validatePassword = (pwd) => {
         const lengthCheck = pwd.length >= 8 && pwd.length <= 32;
@@ -48,7 +49,7 @@ const Register = () => {
                 setErrorMessage(errMsg);
                 return;
             }
-            navigate("/register/confirm", { state: { email } });
+            navigate("/register/confirm", { state: { email, confirm_type } });
             // localStorage.setItem("jwt_token", data.jwt_token);
             // navigate("/detect");
         } catch (error) {
@@ -63,7 +64,7 @@ const Register = () => {
     return (
         <HomeLayout>
             <div className="flex items-center justify-center min-h-screen bg-gray-800 px-4">
-                <div className="bg-gray-900 rounded-lg shadow-xl m-6 w-full max-w-sm">
+                <div className="bg-gray-900 rounded-lg shadow-xl p-4 w-full max-w-sm">
                     <h2 className="text-3xl font-extrabold text-center text-gray-200 mb-6 py-2">Register for DFR</h2>
                     <form onSubmit={handleRegister} className="space-y-5">
                         <div>
@@ -75,7 +76,7 @@ const Register = () => {
                                 id="email"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
-                                className="w-full mx-5 max-w-xs border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="w-full flex justify-center border border-gray-300 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 required
                             />
                         </div>
@@ -89,7 +90,7 @@ const Register = () => {
                                 id="password"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
-                                className="w-full mx-5 max-w-xs border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="w-full flex justify-center border border-gray-300 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 required
                             />
                         </div>
@@ -103,7 +104,7 @@ const Register = () => {
                                 id="confirmPassword"
                                 value={confirmPassword}
                                 onChange={(e) => setConfirmPassword(e.target.value)}
-                                className="w-full mx-5 max-w-xs border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="w-full flex justify-center border border-gray-300 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 required
                             />
                         </div>
@@ -118,7 +119,6 @@ const Register = () => {
                             disabled={loading}
                         >
                             {loading ? "Registering..." : "Register"}
-                            {loading ? <Loader /> : <></>}
                         </Button>
 
                     </form>
@@ -129,6 +129,7 @@ const Register = () => {
                             Login here
                         </a>
                     </p>
+                    {loading && <Loader message="Registering..." />}
                 </div>
             </div>
         </HomeLayout>

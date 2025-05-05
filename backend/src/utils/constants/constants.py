@@ -11,3 +11,5 @@ SMTP_PASS = os.environ.get("SMTP_PASS")
 SMTP_SERVER = os.environ.get("SMTP_SERVER")
 SMTP_PORT = os.environ.get("SMTP_PORT")
 SECRET_KEY = os.environ.get("SECRET_KEY")
+ROOT_WEIGHT_PATH = os.environ.get("ROOT_WEIGHT_PATH")
+IMAGE_SIZE = 256

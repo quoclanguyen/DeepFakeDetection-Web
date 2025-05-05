@@ -52,8 +52,13 @@ const Header = () => {
                 {
                     !email ?
                         (
-
-                            <Link to="/login" className="hover:text-gray-900">LOGIN</Link>
+                            <Link to="/register" className="hover:text-gray-900">Register</Link>
+                        ) : (<></>)
+                }
+                {
+                    !email ?
+                        (
+                            <Link to="/login" className="hover:text-gray-900">Login</Link>
                         ) : (<></>)
                 }
             </nav>

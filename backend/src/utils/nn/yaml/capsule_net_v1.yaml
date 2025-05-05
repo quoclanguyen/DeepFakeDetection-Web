@@ -1,6 +1,6 @@
 # model setting
 pretrained: E:/TLCN/Main/training/pretrained/xception-b5690688.pth   # path to a pre-trained model, if using one
-model_name: capsule_net # model name
+model_name: capsule_net_v1 # model name
 backbone_name: xception  # no backbone VGGextractor
 num_classes: 2
 dataset_json_folder: ./preprocessing/dataset_json

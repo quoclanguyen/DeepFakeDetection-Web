@@ -8,6 +8,7 @@ import torch.nn.functional as F
 import torchvision.transforms as transforms
 
 from utils.nn.detectors import DETECTOR
+from utils.constants.constants import IMAGE_SIZE
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -27,15 +28,12 @@ def call_model(model, data_dict):
 def to_tensor(img):
         return transforms.ToTensor()(img)
 
-def create_data_dict(image_path, device):
-    # Đọc ảnh
-    image = pil_image.open(image_path).convert('RGB')
+def create_data_dict(image, device):
 
     # Tiền xử lý ảnh
     transform = transforms.Compose([
-        transforms.Resize((224, 224)),  # Resize ảnh
         transforms.ToTensor(),         # Chuyển ảnh sang tensor
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # Chuẩn hóa
+        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])  # Chuẩn hóa
     ])
     image_tensor = transform(image)
 
@@ -58,7 +56,7 @@ def load_model(weights_path, detector_path):
 
     if config['cudnn']:
         cudnn.benchmark = True
-
+    
     model_class = DETECTOR[config['model_name']]
     model = model_class(config).to(device)
     epoch = 0
@@ -69,14 +67,13 @@ def load_model(weights_path, detector_path):
             epoch = 0
         ckpt = torch.load(weights_path, map_location=device)
         model.load_state_dict(ckpt, strict=True)
-        print('===> Load checkpoint done!')
     else:
         print('Fail to load the pre-trained weights')
     return model
 
-def infer(model, image_path):
+def infer(model, image):
     prediction_lists = []
-    img = create_data_dict(image_path, device)
+    img = create_data_dict(image, device)
     model.eval()
     predictions = call_model(model, img)
     logits = predictions['cls']

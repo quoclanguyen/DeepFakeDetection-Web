@@ -1,3 +1,4 @@
+import warnings
 import base64
 import io
 import uvicorn
@@ -6,29 +7,72 @@ import hashlib
 import smtplib
 import datetime
 import jwt
+import random
 
 from PIL import Image
 from qdrant_client import QdrantClient
-from qdrant_client.models import PointStruct
+from qdrant_client.models import PointStruct, PointIdsList
 from pymongo import MongoClient
 from fastapi import FastAPI, File, UploadFile, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from utils.classes.classes import LoginPayload, ImageUploadResponse, RegisterPayload, ConfirmRegisterPayload
+from utils.classes.classes import AuthPayload, ImageUploadResponse, ConfirmOTPPayload, ChangePasswordPayload, RecoverPayload
 from utils.nn.model_processing import *
 from utils.nn.image_processing import *
 from utils.constants.constants import *
 from email.mime.text import MIMEText
+from contextlib import asynccontextmanager
+
+loaded_models = {}
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    all_weight_path = {
+        "CapsuleNetV1": {
+            "weight": f"{ROOT_WEIGHT_PATH}\\capsule_net_v1.pth",
+            "config": f"utils\\nn\\yaml\\capsule_net_v1.yaml"
+        },
+        "CapsuleNetV2a": {
+            "weight": f"{ROOT_WEIGHT_PATH}\\capsule_net_v2a.pth",
+            "config": f"utils\\nn\\yaml\\capsule_net_v2.yaml"
+        },
+        "CapsuleNetV2c": {
+            "weight": f"{ROOT_WEIGHT_PATH}\\capsule_net_v2c.pth",
+            "config": f"utils\\nn\\yaml\\capsule_net_v2.yaml"
+        },
+        "F3NetVa": {
+            "weight": f"{ROOT_WEIGHT_PATH}\\f3_net_va.pth",
+            "config": f"utils\\nn\\yaml\\f3_net.yaml"
+        },
+        "F3NetVc": {
+            "weight": f"{ROOT_WEIGHT_PATH}\\f3_net_vc.pth",
+            "config": f"utils\\nn\\yaml\\f3_net.yaml"
+        },
+        "FaceXRay": {
+            "weight": f"{ROOT_WEIGHT_PATH}\\facexray.pth",
+            "config": f"utils\\nn\\yaml\\facexray.yaml"
+        }
+    }
+    warnings.filterwarnings("ignore")
+    # Load trọng số
+    for model_name in all_weight_path.keys():
+        print(f"Loading {model_name}...")
+        model = all_weight_path[model_name]
+        loading_model = load_model(model["weight"], model["config"])
+        loaded_models[model_name] = loading_model
+    yield
+    # Clean up the ML models and release the resources
+    loaded_models.clear()
 
 app = FastAPI(
     title = "DeepFakeDetectAPI",
     description = "Demo App",
-    version = "1.0"
+    version = "1.0",
+    lifespan = lifespan
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Change this to ["http://localhost:3000"] for security
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -36,17 +80,21 @@ app.add_middleware(
 security = HTTPBearer()
 
 collection_name = "DeepFakeDetection"
+# Kết nối với Qdrant
 qdrant_client = QdrantClient(url = QDRANT_ENDPOINT, api_key = QDRANT_API_KEY, timeout = 10)
+# Kết nối với MongoDB
 mongo_client = MongoClient(MONGODB_CONNECTION_STRING)
 mongodb = mongo_client[collection_name]
 
+# import qdrant_client.models as md
 # qdrant_client.create_collection(
 #     collection_name=collection_name,
-#     vectors_config=models.VectorParams(size=224*224, distance=models.Distance.EUCLID),
+#     vectors_config=md.VectorParams(size=IMAGE_SIZE*IMAGE_SIZE, distance=md.Distance.EUCLID),
 # )
+
 @app.post("/app/v1/upload/image", description = "Upload image files", response_model = ImageUploadResponse, tags=["auth"])
 async def upload_image(file: UploadFile = File(...), credentials: HTTPAuthorizationCredentials = Depends(security)):
-    jwt_token = credentials.credentials
+    access_token = credentials.credentials
     image_data = await file.read()
     image = Image.open(io.BytesIO(image_data))
     image_vector = image_to_vector(image)
@@ -61,24 +109,24 @@ async def upload_image(file: UploadFile = File(...), credentials: HTTPAuthorizat
             payload = {"filename": file.filename}
         )
         qdrant_client.upsert(collection_name=collection_name, points=[point])
-    query = mongodb["images"].find({"jwt_token": {"$eq": jwt_token}})
+    query = mongodb["images"].find({"access_token": {"$eq": access_token}})
     image_id_mongo = 0
     if len(list(query)) != 0:
-        lastest_id = int(mongodb["images"].find({"jwt_token": {"$eq": jwt_token}}).sort("image_id", -1).to_list()[0]["image_id"])
+        lastest_id = int(mongodb["images"].find({"access_token": {"$eq": access_token}}).sort("image_id", -1).to_list()[0]["image_id"])
         image_id_mongo = lastest_id + 1
     mongodb["images"].insert_one({
-            "jwt_token": jwt_token,
+            "access_token": access_token,
             "q_ids": ids,
             "image_id": image_id_mongo,
             "timestamp": datetime.datetime.utcnow()
         })
-    return {"message": "Image uploaded successfully", "filename": file.filename, "ids": ids, "image_id": str(image_id_mongo)}
+    return {"status_code": 200, "message": "Image uploaded successfully", "filename": file.filename, "ids": ids, "image_id": str(image_id_mongo)}
 
 @app.get("/app/v1/image/all/", description="Retrieve all images by user", tags=["auth"])
 async def get_all_image(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    jwt_token = credentials.credentials
+    access_token = credentials.credentials
     try:
-        query = mongodb["images"].find(filter = {"jwt_token": {"$eq": jwt_token}}, sort = {"timestamp": 1}, projection = {"q_ids": 1}).to_list()
+        query = mongodb["images"].find(filter = {"access_token": {"$eq": access_token}}, sort = {"timestamp": 1}, projection = {"q_ids": 1}).to_list()
         if len(list(query)) == 0:
             return HTTPException(status_code=404, detail="Cannot find any image")
         # Fetch the stored vector and metadata (payload) from Qdrant
@@ -93,10 +141,10 @@ async def get_all_image(credentials: HTTPAuthorizationCredentials = Depends(secu
 @app.get("/app/v1/image/{image_ids}", description="Retrieve image vector by ID", tags=["auth"])
 async def get_image(image_ids: str, credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
-        jwt_token = credentials.credentials
-        query = mongodb["images"].find(filter = {"jwt_token": {"$eq": jwt_token}, "q_ids": {"$eq": image_ids}}).to_list()
+        access_token = credentials.credentials
+        query = mongodb["images"].find(filter = {"access_token": {"$eq": access_token}, "q_ids": {"$eq": image_ids}}).to_list()
         if len(list(query)) == 0:
-            return HTTPException(status_code=403, detail="Forbidden action")
+            return HTTPException(status_code=404, detail="Image not found")
         image_ids = [image_ids[:36], image_ids[36:72], image_ids[72:]] 
         print(image_ids)
         # Fetch the stored vector and metadata (payload) from Qdrant
@@ -119,28 +167,54 @@ async def get_image(image_ids: str, credentials: HTTPAuthorizationCredentials = 
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    
+
+@app.delete("/app/v1/image/delete/{image_ids}", description="Delete image by ID", tags=["auth"])
+async def delete_image(image_ids: str, credentials: HTTPAuthorizationCredentials = Depends(security)):
+    try:
+        access_token = credentials.credentials
+        query = mongodb["images"].find(filter = {"access_token": {"$eq": access_token}, "q_ids": {"$eq": image_ids}}).to_list()
+        if len(list(query)) == 0:
+            return HTTPException(status_code=404, detail="Image not found")
+        p_iqs = [image_ids[:36], image_ids[36:72], image_ids[72:]] 
+        # Fetch the stored vector and metadata (payload) from Qdrant
+        qdrant_client.delete(collection_name=collection_name, points_selector=PointIdsList(points=p_iqs))
+        mongodb["images"].delete_one({"access_token": access_token, "q_ids": image_ids})
+        
+        return {
+            "message": "Delete successfully!"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/app/v1/detect/{image_ids}", description = "Deepfake detecting", tags=["auth"])
 async def detect_image(image_ids: str, credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
-        jwt_token = credentials.credentials
+        access_token = credentials.credentials
+        query = mongodb["images"].find(filter = {"access_token": {"$eq": access_token}, "q_ids": {"$eq": image_ids}}).to_list()
+        if len(list(query)) == 0:
+            return HTTPException(status_code=404, detail="Image not found")
         image_ids = [image_ids[:36], image_ids[36:72], image_ids[72:]] 
         
         response = qdrant_client.retrieve(collection_name=collection_name, ids=image_ids, with_vectors=True, with_payload=True)
-
-        if response is None:
-            raise HTTPException(status_code=404, detail="Image not found")
         vector = reconstruct_vector(response[i].vector for i in range(3))
+
         image = vector_to_image(vector)
-        # image.save("test.jpg")
-        return {}
+        ci = []
+        for m in loaded_models.keys():
+            _, fake_prob = infer(loaded_models[m], image)
+            ci.append({m: fake_prob.item()})
+        return {
+            "status_code": 200,
+            "message": "Detect successfully",
+            "conf_level_fake": ci
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 # No auth APIs
 
 @app.post("/app/v1/login/", description = "Login", tags=["no_auth"])
-async def login(payload: LoginPayload):
+async def login(payload: AuthPayload):
     try:
         query = mongodb["users"].find({"email": {"$eq": payload.email}})
         if len(list(query)) == 0: # not found
@@ -154,14 +228,15 @@ async def login(payload: LoginPayload):
         return {
             "status_code": 200,
             "message": "Login successfully!",
-            "jwt_token": jwt_token
+            "jwt_token": jwt_token,
+            "access_token": mongodb["access_token"].find({"email": {"$eq": payload.email}}).to_list()[0]["token"]
         }
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/app/v1/register/", description = "Register", tags=["no_auth"])
-async def register(payload: RegisterPayload):
+async def register(payload: AuthPayload):
     try:
         query = mongodb["users"].find({"email": {"$eq": payload.email}})
         if len(list(query)) != 0:
@@ -196,7 +271,8 @@ async def register(payload: RegisterPayload):
                 "email": payload.email,
                 "otp": otp,
                 "createdAt": now,
-                "password": hashlib.sha256(payload.password.encode('utf-8')).hexdigest()
+                "password": hashlib.sha256(payload.password.encode('utf-8')).hexdigest(),
+                "type": 0
             })
             server.quit()
         return {
@@ -206,10 +282,57 @@ async def register(payload: RegisterPayload):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/app/v1/register/confirm", description = "Register confirm", tags=["no_auth"])
-async def confirm_register(payload: ConfirmRegisterPayload):
+
+@app.post("/app/v1/recover/", description = "Recover password", tags=["no_auth"])
+async def recover(payload: RecoverPayload):
     try:
-        query = mongodb["temp_otps"].find({"email": {"$eq": payload.email}}).sort("createdAt", -1).to_list()
+        query = mongodb["users"].find({"email": {"$eq": payload.email}})
+        if len(list(query)) == 0:
+            return {
+                "status_code": 404,
+                "message": "Email not found"
+            }
+        
+        otp = str(random.randint(100000, 999999))
+        sender_email = SMTP_EMAIL
+        sender_password = SMTP_PASS
+        smtp_server = SMTP_SERVER
+        smtp_port = SMTP_PORT
+
+        subject = "Your One-Time Password (OTP)"
+        body = f"Your OTP is: {otp}. It will expire in 5 minutes."
+
+        msg = MIMEText(body)
+        msg["Subject"] = subject
+        msg["From"] = sender_email
+        msg["To"] = payload.email
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
+            server.login(sender_email, sender_password)
+            server.sendmail(sender_email, payload.email, msg.as_string())
+            # Save OTP to DB or cache (temp)
+            now = datetime.datetime.utcnow()
+            mongodb["temp_otps"].insert_one({
+                "email": payload.email,
+                "otp": otp,
+                "createdAt": now,
+                "password": "",
+                "type": 1
+            })
+            server.quit()
+        return {
+            "status_code": 200,
+            "message": "Sent OTP successfully!"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/app/v1/confirm/", description = "OTP confirm", tags=["no_auth"])
+async def confirm_otp(payload: ConfirmOTPPayload):
+    try:
+        query = mongodb["temp_otps"].find(filter = {"email": {"$eq": payload.email}, "type": {"$eq": payload.confirm_type}}).sort("createdAt", -1).to_list()
         if len(list(query)) == 0:
             return {
                 "status_code": 404,
@@ -229,22 +352,67 @@ async def confirm_register(payload: ConfirmRegisterPayload):
             mongodb["temp_otps"].delete_many({"email": payload.email})
             raise HTTPException(status_code=410, detail="OTP expired")
 
-        # Xác nhận thành công OTP
+        #0: Register, 1: ChangePassword
+        if payload.confirm_type == 0:
+            # Xác nhận thành công OTP, tạo user mới
+            temp = list(str(uuid.uuid1()))
+            random.shuffle(temp)
+            mongodb["users"].insert_one({
+                "email": payload.email,
+                "password": query[0]["password"]
+            })
+            mongodb["access_token"].insert_one({
+                "email": payload.email,
+                "token": hashlib.sha256("".join(temp).encode('utf-8')).hexdigest(),
+            })
+        elif payload.confirm_type == 1:
+            access_token = mongodb["access_token"].find(filter = {"email": {"$eq": payload.email}}).to_list()[0]["token"]
 
-        mongodb["users"].insert_one({
-            "email": payload.email,
-            "password": query[0]["password"]
-        })
         mongodb["temp_otps"].delete_many({"email": payload.email})
+            
         jwt_token = jwt.encode({"email": payload.email}, SECRET_KEY, algorithm="HS256")
+        if payload.confirm_type == 0:
+            return {
+                "status_code": 200,
+                "message": "Confirm OTP successfully!",
+                "jwt_token": jwt_token,
+            }
         return {
             "status_code": 200,
             "message": "Confirm OTP successfully!",
+            "jwt_token": jwt_token,
+            "access_token": access_token
+        } 
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/app/v1/change_password/", description = "Change password", tags=["no_auth"])
+async def change_password(payload: ChangePasswordPayload):
+    try:
+        token_db = mongodb["access_token"].find(filter = {"email": {"$eq": payload.email}}).to_list()[0]["token"]
+
+        if payload.access_token != token_db:
+            return {
+                "status_code": 401,
+                "message": "Wrong access token"
+            }
+
+        mongodb["users"].update_one({
+            "email": payload.email
+        },{
+            "$set": {"password": hashlib.sha256(payload.new_password.encode('utf-8')).hexdigest()}
+        })
+        mongodb["temp_otps"].delete_many({"email": payload.email})
+            
+        jwt_token = jwt.encode({"email": payload.email}, SECRET_KEY, algorithm="HS256")
+        return {
+            "status_code": 200,
+            "message": "Change password successfully!",
             "jwt_token": jwt_token
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 if __name__ == "__main__":
     uvicorn.run(app = "main:app", host = "localhost", port = int(PORT), log_level = "info", reload = True)

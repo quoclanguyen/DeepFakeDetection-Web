@@ -10,6 +10,8 @@ from utils.nn.metrics.registry import DETECTOR
 from .utils import slowfast
 
 from .facexray_detector import FaceXrayDetector
-from .capsule_net_detector import CapsuleNetDetector
+from .capsule_net_v1_detector import CapsuleNetV1Detector
+from .capsule_net_v2_detector import CapsuleNetV2Detector
+from .f3net_detector import F3netDetector
 from .ucf_detector import UCFDetector
 from .videomae_detector import VideoMAEDetector

@@ -64,8 +64,8 @@ from utils.nn.loss import LOSSFUNC
 
 import torchvision.models as models
 
-@DETECTOR.register_module(module_name='capsule_net')
-class CapsuleNetDetector(AbstractDetector):
+@DETECTOR.register_module(module_name='capsule_net_v1')
+class CapsuleNetV1Detector(AbstractDetector):
     def __init__(self, config):
         super().__init__()
         self.config = config

@@ -96,12 +96,12 @@ class FaceXrayDetector(AbstractDetector):
         self.loss_func = self.build_loss(config)
     
     def build_backbone(self, config):
-        cfg_path = './training/config/backbone/cls_hrnet_w48.yaml'
+        cfg_path = 'utils/nn/yaml/cls_hrnet_w48.yaml'
 
         with open(cfg_path, 'r') as f:
             cfg_config = yaml.safe_load(f)
         convnet = get_cls_net(cfg_config)
-        saved = torch.load('./training/pretrained/hrnetv2_w48_imagenet_pretrained.pth', map_location='cpu')
+        saved = torch.load('utils/nn/weight/hrnetv2_w48_imagenet_pretrained.pth', map_location='cpu')
         convnet.load_state_dict(saved, False)
         print('Load HRnet')
         return convnet
