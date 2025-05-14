@@ -90,6 +90,7 @@ const OtpConfirm = () => {
                     return;
                 }
                 localStorage.setItem("jwt_token", data.jwt_token);
+                localStorage.setItem("access_token", data.access_token);
                 navigate("/detect");
             } catch (error) {
                 const errMsg = error?.response?.data?.detail || "OTP confirmation failed.";

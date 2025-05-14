@@ -460,12 +460,6 @@ async def confirm_otp(payload: ConfirmOTPPayload):
         mongodb["temp_otps"].delete_many({"email": payload.email})
             
         jwt_token = jwt.encode({"email": payload.email}, SECRET_KEY, algorithm="HS256")
-        if payload.confirm_type == 0:
-            return {
-                "status_code": 200,
-                "message": "Confirm OTP successfully!",
-                "jwt_token": jwt_token,
-            }
         return {
             "status_code": 200,
             "message": "Confirm OTP successfully!",
