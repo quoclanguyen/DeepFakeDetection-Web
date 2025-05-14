@@ -2,10 +2,10 @@ import { useState } from "react";
 import { Upload, CheckCircle } from "lucide-react";
 import HomeLayout from "../layouts/HomeLayout";
 import { mediaServices } from "../api/services/mediaServices";
-import ResultsCard from "../components/ui/ResultsCard";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import Loader from "../components/animation/Loader";
+import ResultsCard from "../components/ui/ResultsCard";
 
 const Detect = () => {
     const [file, setFile] = useState(null);
@@ -13,49 +13,104 @@ const Detect = () => {
     const [dragging, setDragging] = useState(false);
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState(null);
+    const [selectedModel, setSelectedModel] = useState("CapsuleNetV1");
 
-    const handleFileChange = (e) => {
+    const extractFirstFrame = (videoFile) => {
+        return new Promise((resolve) => {
+            const video = document.createElement("video");
+            video.src = URL.createObjectURL(videoFile);
+            video.currentTime = 0.1;
+
+            video.addEventListener("loadeddata", () => {
+                const canvas = document.createElement("canvas");
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const context = canvas.getContext("2d");
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const thumbnailUrl = canvas.toDataURL("image/png");
+                resolve(thumbnailUrl);
+            });
+
+            video.addEventListener("error", () => {
+                resolve(null);
+            });
+        });
+    };
+
+    const handleFileChange = async (e) => {
         const selectedFile = e.target.files[0];
         if (selectedFile) {
             setFile(selectedFile);
-            setPreviewUrl(URL.createObjectURL(selectedFile));
+            if (selectedFile.type.startsWith("image/")) {
+                setPreviewUrl(URL.createObjectURL(selectedFile));
+            } else if (selectedFile.type.startsWith("video/")) {
+                const thumbnailUrl = await extractFirstFrame(selectedFile);
+                setPreviewUrl(thumbnailUrl);
+            }
         }
     };
 
-    const handleDrop = (e) => {
+    const handleDrop = async (e) => {
         e.preventDefault();
         setDragging(false);
         const droppedFile = e.dataTransfer.files[0];
 
         if (droppedFile) {
             setFile(droppedFile);
-            setPreviewUrl(URL.createObjectURL(droppedFile));
+            if (droppedFile.type.startsWith("image/")) {
+                setPreviewUrl(URL.createObjectURL(droppedFile));
+            } else if (droppedFile.type.startsWith("video/")) {
+                const thumbnailUrl = await extractFirstFrame(droppedFile);
+                setPreviewUrl(thumbnailUrl);
+            }
         }
     };
 
-    const uploadImage = async () => {
+    const uploadMedia = async () => {
         if (!file) {
             alert("Please select a valid file first.");
             return;
         }
         setLoading(true);
-
-        try {
-            const response = await mediaServices.uploadImage(file);
-            console.log(response)
-            if (response.status_code == 200) {
-                toast.success("Upload successful!", );
-                setResult(response.data);
+        if (file.type.startsWith("image/")) {
+            try {
+                const response = await mediaServices.uploadImage(file);
+                console.log(response);
+                const id = response.ids;
+                if (response.status_code === 200) {
+                    toast.success("Upload successful!");
+                    try {
+                        const detectResponse = await mediaServices.detectImage(id, selectedModel);
+                        setResult(detectResponse);
+                        setLoading(false);
+                        console.log(detectResponse);
+                        return response.data;
+                    } catch (error) {
+                        console.log(error);
+                        setLoading(false);
+                    }
+                }
+            } catch (error) {
+                console.log(error);
                 setLoading(false);
-                setPreviewUrl(null);
-                setFile(null);
-                return response.data;
             }
-        } catch (error) {
-            console.log(error);
-            setLoading(false);
+        } else if (file.type.startsWith("video/")) {
+            try {
+                const response = await mediaServices.detectVideo(file, selectedModel);
+                console.log(response);
+                if (response.status_code === 200) {
+                    toast.success("Upload successful!");
+                    setResult(response);
+                    setLoading(false);
+                }
+                // const id = response.ids;
+            } catch (error) {
+                console.log(error);
+                setLoading(false);
+            }
         }
-    }
+    };
+
     return (
         <HomeLayout>
             <ToastContainer position="top-center" autoClose={1500} />
@@ -64,8 +119,7 @@ const Detect = () => {
                 <p className="text-lg text-gray-300 mb-6">Upload a file to analyze deepfakes.</p>
 
                 <form
-                    className={`p-4 rounded-lg flex flex-col items-center w-full max-w-md relative shadow-lg transition-all ${dragging ? "bg-gray-800 brightness-50" : "bg-gray-900"
-                        }`}
+                    className={`p-4 rounded-lg flex flex-col items-center w-full max-w-md relative shadow-lg transition-all ${dragging ? "bg-gray-800 brightness-50" : "bg-gray-900"}`}
                     onDragOver={(e) => {
                         e.preventDefault();
                         setDragging(true);
@@ -73,7 +127,6 @@ const Detect = () => {
                     onDragLeave={() => setDragging(false)}
                     onDrop={handleDrop}
                 >
-                    {/* Drag and Drop Area */}
                     <label
                         htmlFor="fileUpload"
                         className="w-full flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-lg cursor-pointer transition-all"
@@ -87,11 +140,10 @@ const Detect = () => {
                             id="fileUpload"
                             onChange={handleFileChange}
                             className="hidden"
-                            accept="image/*"
+                            accept="image/*,video/*"
                         />
                     </label>
 
-                    {/* Image Preview */}
                     {previewUrl && (
                         <div className="mt-4 w-full flex justify-center">
                             <img
@@ -102,32 +154,39 @@ const Detect = () => {
                         </div>
                     )}
 
-                    {/* Upload Button */}
-                    <button
-                        type="button"
-                        onClick={uploadImage} // ✅ Call upload function
-                        disabled={loading} // ✅ Disable while uploading
-                        className="mt-4 px-4 py-3 text-white font-semibold rounded-lg transition-all 
-                            bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 
-                            active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50"
-                    >
-                        {loading ? "Uploading..." : (
-                            <>
-                                <CheckCircle size={20} />
-                                Upload & Detect
-                            </>
-                        )}
-                    </button>
-                </form>
-                {result && (
-                    <div className="mt-8 w-full max-w-md">
-                        <ResultsCard
-                            filename={result.filename}
-                            ids={result.ids}
-                        />
+                    <div className="mt-4 flex gap-2">
+                        <select
+                            value={selectedModel}
+                            onChange={(e) => setSelectedModel(e.target.value)}
+                            className="px-2 py-1 text-black rounded-lg"
+                        >
+                            <option value="CapsuleNetV1">CapsuleNetV1</option>
+                            <option value="CapsuleNetV2a">CapsuleNetV2a</option>
+                            <option value="CapsuleNetV2c">CapsuleNetV2c</option>
+                            <option value="F3NetVa">F3NetVa</option>
+                            <option value="F3NetVc">F3NetVc</option>
+                            <option value="FaceXRay">FaceXRay</option>
+                        </select>
+                        <button
+                            type="button"
+                            onClick={uploadMedia}
+                            disabled={loading}
+                            className="px-4 py-3 text-white font-semibold rounded-lg bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700"
+                        >
+                            {loading ? "Uploading..." : "Upload & Detect"}
+                        </button>
                     </div>
+                </form>
+
+                {result && (
+                    <ResultsCard
+                        image={previewUrl}
+                        filename={file.name}
+                        prob={result.conf_level_fake}
+                        onClose={() => { setResult(null); setFile(null); }}
+                    />
                 )}
-                {loading && <Loader message="Uploading..."/>}
+                {loading && <Loader message="Uploading..." />}
             </div>
         </HomeLayout>
     );

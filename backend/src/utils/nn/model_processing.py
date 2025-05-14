@@ -22,31 +22,33 @@ def init_seed(config):
 
 @torch.no_grad()
 def call_model(model, data_dict):
+    print(data_dict["image"].size())
     predictions = model(data_dict, inference=True)
     return predictions
 
 def to_tensor(img):
-        return transforms.ToTensor()(img)
+    return transforms.ToTensor()(img)
 
-def create_data_dict(image, device):
-
-    # Tiền xử lý ảnh
+def create_data_dict(image, device, is_tensor = False):
     transform = transforms.Compose([
-        transforms.ToTensor(),         # Chuyển ảnh sang tensor
-        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])  # Chuẩn hóa
+        transforms.ToTensor(),  # Converts to [0, 1]
+        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
     ])
-    image_tensor = transform(image)
+    
+    if is_tensor:
+        frames = [transform(frame) for frame in image]
+        _tensor = torch.stack(frames).to(device)
+    else:
+        image_tensor = transform(image)
+        _tensor = image_tensor.unsqueeze(0).to(device)
 
-    # Chuyển ảnh thành batch (batch size = 1)
-    image_tensor = image_tensor.unsqueeze(0).to(device)  # Đảm bảo tensor trên đúng thiết bị
 
-    # Tạo data_dict
     data_dict = {
-        'image': image_tensor,  # Tensor ảnh
+        'image': _tensor,
     }
-
+    torch.cuda.empty_cache()
+    del _tensor
     return data_dict
-
 
 def load_model(weights_path, detector_path):
     with open(detector_path, 'r') as f:
@@ -56,7 +58,7 @@ def load_model(weights_path, detector_path):
 
     if config['cudnn']:
         cudnn.benchmark = True
-    
+
     model_class = DETECTOR[config['model_name']]
     model = model_class(config).to(device)
     epoch = 0
@@ -71,18 +73,25 @@ def load_model(weights_path, detector_path):
         print('Fail to load the pre-trained weights')
     return model
 
-def infer(model, image):
-    prediction_lists = []
-    img = create_data_dict(image, device)
+def infer(model, image, is_tensor = False):
+    img = create_data_dict(image, device, is_tensor)
     model.eval()
     predictions = call_model(model, img)
-    logits = predictions['cls']
-    prob = torch.sigmoid(logits)
+    del img
+    fake_prob = predictions['prob'].cpu().detach().numpy()[0]
+    prediction_lists = [
+        1 - fake_prob,
+        fake_prob
+    ]
 
-    prediction_lists = list(prob[:, 1].cpu().detach().numpy())
     feature_lists = list(predictions['feat'].cpu().detach().numpy())
 
-    print(feature_lists)
+    # print(feature_lists)
+    del feature_lists, predictions
     print(prediction_lists)
     print('===> Test Done!')
-    return prediction_lists[0], 1 - prediction_lists[0]
+
+    # Free memory after inference
+    torch.cuda.empty_cache()
+
+    return prediction_lists

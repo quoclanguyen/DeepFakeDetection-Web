@@ -14,11 +14,7 @@ export const mediaServices = {
             },
         });
 
-        return {
-            id: response.data.ids[0], // Taking the first ID
-            fileName: response.data.filename,
-            status_code: response.data.status_code
-        };
+        return response.data;
     },
     getAllImages: async (): Promise<{ q_ids: string[] }> => {
         const response = await axiosClient.get(MediaEndpoint.getAllImage.url, {
@@ -42,6 +38,27 @@ export const mediaServices = {
         const response = await axiosClient.delete(endpoint.url, {
             headers: {
                 Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+            },
+        });
+        return response.data;
+    },
+    detectImage: async (imageId: string, modelName: string): Promise<{message: string}> => {
+        const endpoint = MediaEndpoint.detectImage(imageId, modelName);
+        const response = await axiosClient.post(endpoint.url, {}, {
+            headers: {
+                Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+            }
+        })
+        return response.data;
+    },
+    detectVideo: async (file: File, modelName: string): Promise<{message: string}> => {
+        const formData = new FormData();
+        formData.append("file", file);
+        const endpoint = MediaEndpoint.detectVideo(modelName);
+        const response = await axiosClient.post(endpoint.url, formData, {
+            headers: {
+                "Content-Type": "multipart/form-data",
+                Authorization: `Bearer ${localStorage.getItem("access_token")}`
             },
         });
         return response.data;

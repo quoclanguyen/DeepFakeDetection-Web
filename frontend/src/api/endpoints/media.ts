@@ -15,5 +15,13 @@ export const MediaEndpoint = {
     deleteImage: (imageId: string) => ({
         url: `/image/delete/${imageId}`,
         method: "DELETE"
+    }),
+    detectImage: (imageId: string, model_name: string) => ({
+        url: `/detect/${imageId}?model_name=${model_name}`,
+        method: "POST"
+    }),
+    detectVideo: (model_name: string) => ({
+        url: `/detect/video?model_name=${model_name}`,
+        method: "POST"
     })
 }

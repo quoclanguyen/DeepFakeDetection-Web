@@ -8,6 +8,8 @@ import smtplib
 import datetime
 import jwt
 import random
+import cv2
+import tempfile
 
 from PIL import Image
 from qdrant_client import QdrantClient
@@ -109,24 +111,111 @@ async def upload_image(file: UploadFile = File(...), credentials: HTTPAuthorizat
             payload = {"filename": file.filename}
         )
         qdrant_client.upsert(collection_name=collection_name, points=[point])
-    query = mongodb["images"].find({"access_token": {"$eq": access_token}})
+    query = mongodb["media"].find({"access_token": {"$eq": access_token}})
     image_id_mongo = 0
     if len(list(query)) != 0:
-        lastest_id = int(mongodb["images"].find({"access_token": {"$eq": access_token}}).sort("image_id", -1).to_list()[0]["image_id"])
+        lastest_id = mongodb["media"].find({"access_token": {"$eq": access_token}}).sort("image_id", -1).to_list()
+        if len(lastest_id[0]) != 0: 
+            lastest_id = int(lastest_id[0]["image_id"])
+        else:
+            lastest_id = -1
         image_id_mongo = lastest_id + 1
-    mongodb["images"].insert_one({
+    mongodb["media"].insert_one({
             "access_token": access_token,
             "q_ids": ids,
             "image_id": image_id_mongo,
-            "timestamp": datetime.datetime.utcnow()
+            "timestamp": datetime.datetime.utcnow(),
+            "prob": "Nan"
         })
     return {"status_code": 200, "message": "Image uploaded successfully", "filename": file.filename, "ids": ids, "image_id": str(image_id_mongo)}
+
+@app.post("/app/v1/detect/video", description = "Upload and detect videos", tags=["auth"])
+async def detect_video(file: UploadFile = File(...), credentials: HTTPAuthorizationCredentials = Depends(security), model_name: str = "CapsuleNetV2a"):
+    access_token = credentials.credentials
+    # Save uploaded video to a temporary file
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
+            tmp.write(await file.read())
+            tmp_path = tmp.name
+    except Exception as e:
+        return {"status_code": 500, "message": f"Failed to save uploaded video: {e}"}
+
+    # Open video file
+    cap = cv2.VideoCapture(tmp_path)
+    if not cap.isOpened():
+        os.remove(tmp_path)
+        return {"status_code": 400, "message": "Cannot open video file"}
+    
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    duration = frame_count / fps
+    # Check if video duration exceeds the limit
+    MAX_DURATION = 10
+    if duration > MAX_DURATION:
+        cap.release()
+        os.remove(tmp_path)
+        raise HTTPException(status_code=400, detail= f"Video duration exceeds {MAX_DURATION} seconds.")
+
+    frame_skip = max(1, int(fps / 15))  # Calculate the number of frames to skip
+    frames = []
+    frame_count = 0
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        if frame_count == 0:
+            thumb = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+            thumb_vector = image_to_vector(thumb)
+            ids = ""
+            for v in split_vector(thumb_vector):
+                thumb_id = str(uuid.uuid1())
+                ids += thumb_id
+                point = PointStruct(
+                    id = thumb_id,
+                    vector = v,
+                    payload = {"filename": file.filename}
+                )
+                qdrant_client.upsert(collection_name=collection_name, points=[point])
+            query = mongodb["media"].find({"access_token": {"$eq": access_token}})
+            thumb_id_mongo = 0
+            if len(list(query)) != 0:
+                lastest_id = mongodb["media"].find({"access_token": {"$eq": access_token}}).sort("thumb_id", -1).to_list()
+
+                if "image_id" in lastest_id[0].keys():
+                    lastest_id = -1
+                else:
+                    lastest_id = int(lastest_id[0]["thumb_id"])
+                thumb_id_mongo = lastest_id + 1
+        if frame_count % frame_skip == 0:
+            img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)).resize((IMAGE_SIZE, IMAGE_SIZE))
+            frames.append(img)
+        frame_count += 1
+
+    cap.release()
+    os.remove(tmp_path)
+    # _, fake_prob = infer(loaded_models["F3NetVa"], frames, True)    
+    # ci = fake_prob.item()
+    _, fake_prob = infer(loaded_models[model_name], frames, True)
+    ci = fake_prob.item()
+    mongodb["media"].insert_one({
+            "access_token": access_token,
+            "q_ids": ids,
+            "thumb_id": thumb_id_mongo,
+            "timestamp": datetime.datetime.utcnow(),
+            "prob": ci
+        })
+    return {
+        "status_code": 200,
+        "message": "Detect successfully",
+        "conf_level_fake": ci
+    }
 
 @app.get("/app/v1/image/all/", description="Retrieve all images by user", tags=["auth"])
 async def get_all_image(credentials: HTTPAuthorizationCredentials = Depends(security)):
     access_token = credentials.credentials
     try:
-        query = mongodb["images"].find(filter = {"access_token": {"$eq": access_token}}, sort = {"timestamp": 1}, projection = {"q_ids": 1}).to_list()
+        query = mongodb["media"].find(filter = {"access_token": {"$eq": access_token}}, sort = {"timestamp": 1}, projection = {"q_ids": 1}).to_list()
         if len(list(query)) == 0:
             return HTTPException(status_code=404, detail="Cannot find any image")
         # Fetch the stored vector and metadata (payload) from Qdrant
@@ -142,7 +231,7 @@ async def get_all_image(credentials: HTTPAuthorizationCredentials = Depends(secu
 async def get_image(image_ids: str, credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
         access_token = credentials.credentials
-        query = mongodb["images"].find(filter = {"access_token": {"$eq": access_token}, "q_ids": {"$eq": image_ids}}).to_list()
+        query = mongodb["media"].find(filter = {"access_token": {"$eq": access_token}, "q_ids": {"$eq": image_ids}}).to_list()
         if len(list(query)) == 0:
             return HTTPException(status_code=404, detail="Image not found")
         image_ids = [image_ids[:36], image_ids[36:72], image_ids[72:]] 
@@ -172,13 +261,13 @@ async def get_image(image_ids: str, credentials: HTTPAuthorizationCredentials = 
 async def delete_image(image_ids: str, credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
         access_token = credentials.credentials
-        query = mongodb["images"].find(filter = {"access_token": {"$eq": access_token}, "q_ids": {"$eq": image_ids}}).to_list()
+        query = mongodb["media"].find(filter = {"access_token": {"$eq": access_token}, "q_ids": {"$eq": image_ids}}).to_list()
         if len(list(query)) == 0:
             return HTTPException(status_code=404, detail="Image not found")
         p_iqs = [image_ids[:36], image_ids[36:72], image_ids[72:]] 
         # Fetch the stored vector and metadata (payload) from Qdrant
         qdrant_client.delete(collection_name=collection_name, points_selector=PointIdsList(points=p_iqs))
-        mongodb["images"].delete_one({"access_token": access_token, "q_ids": image_ids})
+        mongodb["media"].delete_one({"access_token": access_token, "q_ids": image_ids})
         
         return {
             "message": "Delete successfully!"
@@ -187,25 +276,25 @@ async def delete_image(image_ids: str, credentials: HTTPAuthorizationCredentials
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/app/v1/detect/{image_ids}", description = "Deepfake detecting", tags=["auth"])
-async def detect_image(image_ids: str, credentials: HTTPAuthorizationCredentials = Depends(security)):
+async def detect_image(image_ids: str, credentials: HTTPAuthorizationCredentials = Depends(security), model_name: str = "CapsuleNetV2a"):
     try:
         access_token = credentials.credentials
-        query = mongodb["images"].find(filter = {"access_token": {"$eq": access_token}, "q_ids": {"$eq": image_ids}}).to_list()
+        query = mongodb["media"].find(filter = {"access_token": {"$eq": access_token}, "q_ids": {"$eq": image_ids}}).to_list()
         if len(list(query)) == 0:
             return HTTPException(status_code=404, detail="Image not found")
-        image_ids = [image_ids[:36], image_ids[36:72], image_ids[72:]] 
+        qids = [image_ids[:36], image_ids[36:72], image_ids[72:]] 
         
-        response = qdrant_client.retrieve(collection_name=collection_name, ids=image_ids, with_vectors=True, with_payload=True)
+        response = qdrant_client.retrieve(collection_name=collection_name, ids=qids, with_vectors=True, with_payload=True)
         vector = reconstruct_vector(response[i].vector for i in range(3))
 
         image = vector_to_image(vector)
-        ci = []
-        for m in loaded_models.keys():
-            _, fake_prob = infer(loaded_models[m], image)
-            ci.append({m: fake_prob.item()})
+        _, fake_prob = infer(loaded_models[model_name], image)
+        ci = fake_prob.item()
+        mongodb["media"].update_one({"access_token": access_token, "q_ids": image_ids}, {"$set": {"prob": ci}})
         return {
             "status_code": 200,
             "message": "Detect successfully",
+            "model_used": model_name,
             "conf_level_fake": ci
         }
     except Exception as e:

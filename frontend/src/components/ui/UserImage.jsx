@@ -2,7 +2,7 @@
 import React from "react";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 
-const UserImage = ({ image, onClose, onDelete, onPrev, onNext, hasPrev, hasNext }) => {
+const UserImage = ({ image, onClose, onDelete, onPrev, onNext, hasPrev, hasNext, prob }) => {
     const handleBackgroundClick = (e) => {
         if (e.target === e.currentTarget) onClose();
     };
@@ -16,6 +16,9 @@ const UserImage = ({ image, onClose, onDelete, onPrev, onNext, hasPrev, hasNext 
                 <img src={`data:image/png;base64,${image.image_data}`} alt="Full Size" className="rounded-xl w-full max-h-[80vh] object-contain mx-auto" />
                 <div className="m-2 text-center text-blue-950 text-lg">
                     {image.metadata?.filename || "No description"}
+                </div>
+                <div className="m-2 text-center text-red-600 text-lg">
+                    Likelihood of DeepFake Manipulation: {prob || "??"}%
                 </div>
                 <div className="flex justify-center gap-2">
                     <button onClick={onDelete} className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">Delete</button>

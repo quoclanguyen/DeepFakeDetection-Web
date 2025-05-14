@@ -10,45 +10,67 @@ const Gallery = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [imageIds, setImageIds] = useState([]);
-    const fetchImages = async () => {
+
+    useEffect(() => {
+        const loadImageIds = async () => {
+            try {
+                const imageIdsRes = await mediaServices.getAllImages();
+                if (imageIdsRes.status_code === 404) {
+                    setError("You haven't uploaded any image");
+                    setLoading(false);
+                    return;
+                }
+                setImageIds(imageIdsRes.q_ids);
+            } catch (err) {
+                setError(err.response?.data?.detail || "Failed to load image IDs.");
+            } finally {
+                setLoading(false);
+            }
+        };
+        loadImageIds();
+    }, []);
+
+    const fetchImagesSequentially = async () => {
+        setLoading(true);
         try {
-            const imageIdsRes = await mediaServices.getAllImages();
-            if (imageIdsRes.status_code === 404) {
-                setError("You haven't uploaded any image");
-                return;
+            for (const idStr of imageIds) {
+                try {
+                    const imageRes = await mediaServices.getImage(idStr);
+                    setImages((prev) => [...prev, imageRes]);
+                } catch (err) {
+                    console.log(`Failed to load image with ID: ${idStr}`);
+                }
             }
-            const allImages = [];
-            setImageIds(imageIdsRes.q_ids);
-            for (const idStr of imageIdsRes.q_ids) {
-                const imageRes = await mediaServices.getImage(idStr);
-                allImages.push(imageRes);
-            }
-            setImages(allImages);
         } catch (err) {
-            setError(err.response?.data?.detail || "Failed to load images.");
+            setError("Failed to load images.");
         } finally {
             setLoading(false);
         }
     };
+
     useEffect(() => {
-        fetchImages();
+        if (imageIds.length > 0) {
+            fetchImagesSequentially();
+        }
     }, [imageIds]);
-    // console.log(imageIds)
+
     const selectedImage = selectedIndex !== null ? images[selectedIndex] : null;
 
     const handleDelete = async () => {
         const idToDelete = imageIds[selectedIndex];
-        // console.log(idToDelete);
         setLoading(true);
-        await mediaServices.deleteImage(idToDelete);
-        setLoading(false);
-        const updatedImageIds = imageIds.filter((_, idx) => idx !== selectedIndex);
-        const updatedImages = images.filter((_, idx) => idx !== selectedIndex);
-    
-        setImages(updatedImages);
-        setImageIds(updatedImageIds);
-        setSelectedIndex(null);
-        fetchImages();
+        try {
+            await mediaServices.deleteImage(idToDelete);
+            const updatedImageIds = imageIds.filter((_, idx) => idx !== selectedIndex);
+            const updatedImages = images.filter((_, idx) => idx !== selectedIndex);
+            setImageIds(updatedImageIds);
+            setImages(updatedImages);
+            setSelectedIndex(null);
+        } catch (err) {
+            setError("Failed to delete the image.");
+        } finally {
+            setLoading(false);
+        }
     };
 
     const showPrev = () => setSelectedIndex((prev) => (prev > 0 ? prev - 1 : prev));
@@ -73,7 +95,7 @@ const Gallery = () => {
                                 onClick={() => setSelectedIndex(idx)}
                             >
                                 <img
-                                    src={`data:image/png;base64,${img.image_data}`}
+                                    src={`data:image/webp;base64,${img.image_data}`}
                                     alt="User Upload"
                                     className="w-full h-48 object-cover rounded-md"
                                 />
@@ -86,16 +108,16 @@ const Gallery = () => {
                 )}
                 {selectedImage && (
                     <UserImage
-                    image={selectedImage}
-                    onClose={() => setSelectedIndex(null)}
-                    onDelete={handleDelete}
-                    onPrev={showPrev}
-                    onNext={showNext}
-                    hasPrev={selectedIndex > 0}
-                    hasNext={selectedIndex < images.length - 1}
+                        image={selectedImage}
+                        onClose={() => setSelectedIndex(null)}
+                        onDelete={handleDelete}
+                        onPrev={showPrev}
+                        onNext={showNext}
+                        hasPrev={selectedIndex > 0}
+                        hasNext={selectedIndex < images.length - 1}
                     />
                 )}
-                {loading && <Loader message="Loading..." over_image={selectedImage===null ? true: false}/>}
+                {loading && <Loader message="Loading..." over_image={!selectedImage} />}
             </div>
         </HomeLayout>
     );
