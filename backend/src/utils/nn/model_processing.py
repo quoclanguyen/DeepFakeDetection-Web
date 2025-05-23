@@ -1,14 +1,14 @@
 import yaml
 import random
-from PIL import Image as pil_image
-
 import torch
 import torch.backends.cudnn as cudnn
 import torch.nn.functional as F
 import torchvision.transforms as transforms
 
+from PIL import Image as pil_image
 from utils.nn.detectors import DETECTOR
 from utils.constants.constants import IMAGE_SIZE
+from utils.nn.image_processing import extract_aligned_face_dlib
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -29,19 +29,22 @@ def call_model(model, data_dict):
 def to_tensor(img):
     return transforms.ToTensor()(img)
 
-def create_data_dict(image, device, is_tensor = False):
+def create_data_dict(unprocessed_image, device, is_tensor = False):
     transform = transforms.Compose([
         transforms.ToTensor(),  # Converts to [0, 1]
         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
     ])
     
     if is_tensor:
-        frames = [transform(frame) for frame in image]
+        frames = []
+        for frame in unprocessed_image:
+            image, _, _ = extract_aligned_face_dlib(frame, res = IMAGE_SIZE)
+            frames.append(transform(image))
         _tensor = torch.stack(frames).to(device)
     else:
+        image, _, _ = extract_aligned_face_dlib(unprocessed_image, res = IMAGE_SIZE)
         image_tensor = transform(image)
         _tensor = image_tensor.unsqueeze(0).to(device)
-
 
     data_dict = {
         'image': _tensor,

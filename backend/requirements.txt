@@ -16,3 +16,10 @@ pymongo
 bcrypt
 pyjwt
 opencv-python
+imutils
+scikit-image
+cmake
+dlib-19.22.99-cp310-cp310-win_amd64.whl
+numpy==1.26.4
+# nnunetv2==2.4.2
+# dlib

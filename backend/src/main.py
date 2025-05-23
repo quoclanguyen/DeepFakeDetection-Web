@@ -150,7 +150,7 @@ async def detect_video(file: UploadFile = File(...), credentials: HTTPAuthorizat
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     duration = frame_count / fps
     # Check if video duration exceeds the limit
-    MAX_DURATION = 10
+    MAX_DURATION = 15
     if duration > MAX_DURATION:
         cap.release()
         os.remove(tmp_path)
@@ -450,9 +450,10 @@ async def confirm_otp(payload: ConfirmOTPPayload):
                 "email": payload.email,
                 "password": query[0]["password"]
             })
+            access_token = hashlib.sha256("".join(temp).encode('utf-8')).hexdigest()
             mongodb["access_token"].insert_one({
                 "email": payload.email,
-                "token": hashlib.sha256("".join(temp).encode('utf-8')).hexdigest(),
+                "token": access_token,
             })
         elif payload.confirm_type == 1:
             access_token = mongodb["access_token"].find(filter = {"email": {"$eq": payload.email}}).to_list()[0]["token"]
