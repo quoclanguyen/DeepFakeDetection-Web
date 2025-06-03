@@ -203,7 +203,8 @@ async def detect_video(file: UploadFile = File(...), credentials: HTTPAuthorizat
             "q_ids": ids,
             "thumb_id": thumb_id_mongo,
             "timestamp": datetime.datetime.utcnow(),
-            "prob": ci
+            "prob": ci,
+            "model_used": model_name
         })
     return {
         "status_code": 200,
@@ -232,6 +233,7 @@ async def get_image(image_ids: str, credentials: HTTPAuthorizationCredentials = 
     try:
         access_token = credentials.credentials
         query = mongodb["media"].find(filter = {"access_token": {"$eq": access_token}, "q_ids": {"$eq": image_ids}}).to_list()
+        prob = query[0]["prob"]
         if len(list(query)) == 0:
             return HTTPException(status_code=404, detail="Image not found")
         image_ids = [image_ids[:36], image_ids[36:72], image_ids[72:]] 
@@ -252,6 +254,7 @@ async def get_image(image_ids: str, credentials: HTTPAuthorizationCredentials = 
         return {
             "image_data": img_str,
             "metadata": response.payload,
+            "prob": prob,
             "message": "Retrieved successfully!"
         }
     except Exception as e:
@@ -290,7 +293,7 @@ async def detect_image(image_ids: str, credentials: HTTPAuthorizationCredentials
         image = vector_to_image(vector)
         _, fake_prob = infer(loaded_models[model_name], image)
         ci = fake_prob.item()
-        mongodb["media"].update_one({"access_token": access_token, "q_ids": image_ids}, {"$set": {"prob": ci}})
+        mongodb["media"].update_one({"access_token": access_token, "q_ids": image_ids}, {"$set": {"prob": ci, "model_used": model_name}})
         return {
             "status_code": 200,
             "message": "Detect successfully",

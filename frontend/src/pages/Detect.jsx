@@ -183,7 +183,7 @@ const Detect = () => {
                         image={previewUrl}
                         filename={file.name}
                         prob={result.conf_level_fake}
-                        onClose={() => { setResult(null); setFile(null); }}
+                        onClose={() => { setResult(null); }}
                     />
                 )}
                 {loading && <Loader message="Uploading..." />}

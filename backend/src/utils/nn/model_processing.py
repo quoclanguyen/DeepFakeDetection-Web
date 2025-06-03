@@ -38,11 +38,11 @@ def create_data_dict(unprocessed_image, device, is_tensor = False):
     if is_tensor:
         frames = []
         for frame in unprocessed_image:
-            image, _, _ = extract_aligned_face_dlib(frame, res = IMAGE_SIZE)
+            image = extract_aligned_face_dlib(frame, res = IMAGE_SIZE)
             frames.append(transform(image))
         _tensor = torch.stack(frames).to(device)
     else:
-        image, _, _ = extract_aligned_face_dlib(unprocessed_image, res = IMAGE_SIZE)
+        image = extract_aligned_face_dlib(unprocessed_image, res = IMAGE_SIZE)
         image_tensor = transform(image)
         _tensor = image_tensor.unsqueeze(0).to(device)
 

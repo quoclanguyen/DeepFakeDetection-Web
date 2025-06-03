@@ -45,6 +45,9 @@ def extract_aligned_face_dlib(image, res=256, mask=None):
     face_detector = dlib.get_frontal_face_detector()
     predictor_path = 'utils\\nn\\shape_predictor_81_face_landmarks.dat'
     predictor = dlib.shape_predictor(predictor_path)
+    image = np.array(image)
+    image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+
     def img_align_crop(img, landmark=None, outsize=None, scale=1.3, mask=None):
         M = None
         target_size = [112, 112]
@@ -90,7 +93,6 @@ def extract_aligned_face_dlib(image, res=256, mask=None):
             return img, None
 
     # Chuyển đổi ảnh sang RGB và nhận diện khuôn mặt
-    height, width = image.shape[:2]
     rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     faces = face_detector(rgb, 1)
 
@@ -100,9 +102,10 @@ def extract_aligned_face_dlib(image, res=256, mask=None):
         landmarks = get_keypts(rgb, face, predictor, face_detector)
         cropped_face, mask_face = img_align_crop(rgb, landmarks, outsize=(res, res), mask=mask)
         cropped_face = cv2.cvtColor(cropped_face, cv2.COLOR_RGB2BGR)
-        return cropped_face, landmarks, mask_face
+        cropped_face = Image.fromarray(cropped_face)
+        return cropped_face
     else:
-        return None, None, None
+        return None
 
 ## Example
 
