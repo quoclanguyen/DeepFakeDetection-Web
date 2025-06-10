@@ -234,6 +234,7 @@ async def get_image(image_ids: str, credentials: HTTPAuthorizationCredentials = 
         access_token = credentials.credentials
         query = mongodb["media"].find(filter = {"access_token": {"$eq": access_token}, "q_ids": {"$eq": image_ids}}).to_list()
         prob = query[0]["prob"]
+        model = query[0]["model_used"]
         if len(list(query)) == 0:
             return HTTPException(status_code=404, detail="Image not found")
         image_ids = [image_ids[:36], image_ids[36:72], image_ids[72:]] 
@@ -255,6 +256,7 @@ async def get_image(image_ids: str, credentials: HTTPAuthorizationCredentials = 
             "image_data": img_str,
             "metadata": response.payload,
             "prob": prob,
+            "model_used": model,
             "message": "Retrieved successfully!"
         }
     except Exception as e:

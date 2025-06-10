@@ -20,7 +20,9 @@ const Gallery = () => {
                     setLoading(false);
                     return;
                 }
-                setImageIds(imageIdsRes.q_ids);
+                // Remove duplicate IDs
+                const uniqueIds = [...new Set(imageIdsRes.q_ids)];
+                setImageIds(uniqueIds);
             } catch (err) {
                 setError(err.response?.data?.detail || "Failed to load image IDs.");
             } finally {
@@ -30,17 +32,20 @@ const Gallery = () => {
         loadImageIds();
     }, []);
 
+
     const fetchImagesSequentially = async () => {
         setLoading(true);
         try {
+            const fetchedImages = [];
             for (const idStr of imageIds) {
                 try {
                     const imageRes = await mediaServices.getImage(idStr);
-                    setImages((prev) => [...prev, imageRes]);
+                    fetchedImages.push(imageRes);
                 } catch (err) {
                     console.log(`Failed to load image with ID: ${idStr}`);
                 }
             }
+            setImages(fetchedImages); // Single update
         } catch (err) {
             setError("Failed to load images.");
         } finally {
@@ -48,6 +53,7 @@ const Gallery = () => {
         }
     };
 
+    console.log(imageIds)
     useEffect(() => {
         if (imageIds.length > 0) {
             fetchImagesSequentially();

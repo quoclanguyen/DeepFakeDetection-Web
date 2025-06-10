@@ -20,6 +20,9 @@ const UserImage = ({ image, onClose, onDelete, onPrev, onNext, hasPrev, hasNext 
                 <div className="m-2 text-center text-red-600 text-lg">
                     Likelihood of DeepFake Manipulation: {(image.prob * 100).toFixed(2) || "??"}%
                 </div>
+                <div className="m-2 text-center text-red-600 text-lg">
+                    Model used for detect: {image.model_used || "??"}
+                </div>
                 <div className="flex justify-center gap-2">
                     <button onClick={onDelete} className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">Delete</button>
                     <button onClick={onClose} className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700">Close</button>

@@ -161,8 +161,7 @@ const Detect = () => {
                             className="px-2 py-1 text-black rounded-lg"
                         >
                             <option value="CapsuleNetV1">CapsuleNetV1</option>
-                            <option value="CapsuleNetV2a">CapsuleNetV2a</option>
-                            <option value="CapsuleNetV2c">CapsuleNetV2c</option>
+                            <option value="CapsuleNetV2a">CapsuleNetV2</option>
                             <option value="F3NetVa">F3NetVa</option>
                             <option value="F3NetVc">F3NetVc</option>
                             <option value="FaceXRay">FaceXRay</option>
